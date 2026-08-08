@@ -1,0 +1,252 @@
+• What’s left, in practical order:
+
+  1. Validate locally
+      - Fix Docker socket access, then run Django/FastAPI/Flask live workflow guides.
+      - Create FastAPI’s uv environment and Flask’s .venv, install dependencies, run their tests.
+      - Verify real Keycloak tokens, Celery processing, PostgreSQL records, Redis, and Mongo audit events.
+
+  2. Finish quality and contract work
+      - Create one checked-in shared OpenAPI specification.
+      - Build a cross-framework contract test suite.
+      - Add missing tests: malformed ZIP, exact 15 MB boundary, retries/timeouts, retry exhaustion, partial failures, concurrent reviews, and duplicate delivery.
+      - Add Alembic migrations for FastAPI and Flask instead of creating tables at app startup.
+
+  3. Complete missing application integrations
+      - Add Azure Blob storage abstraction/configuration to FastAPI and Flask.
+      - Add Sentry and Datadog configuration to FastAPI and Flask.
+      - Expand audit coverage for queued documents, attempts, and retries.
+
+  4. Write the remaining project documents
+      - Architecture/design document.
+      - Assumptions, trade-offs, and limitations.
+      - Django vs FastAPI vs Flask comparison.
+      - Production-incident cause/remediation report.
+
+  5. Deploy to Azure
+      - Create ACR, Container Apps, PostgreSQL, Redis, Blob Storage, Key Vault, Log Analytics.
+      - Configure production Keycloak, managed identities, KEDA, secrets, alerts, DNS/TLS, budgets.
+      - Deploy Django first, then FastAPI and Flask.
+      - Run deployed smoke tests and document rollback/teardown.
+
+  The exact tracked state is in CHECKLIST.md and docs/coverage-audit.md.
+
+
+› do 1
+
+
+• I’ll execute the local-validation phase: check Docker access, set up the FastAPI and Flask isolated environments, run their tests, then run any live Compose workflow that the host permits.
+
+• Ran id
+  │ groups
+  │ ls -l /var/run/docker.sock 2>&1 || true
+  │ … +2 lines
+  └ uid=1000(soumikd4) gid=1000(soumikd4) groups=1000(soumikd4),65534(nogroup)
+    soumikd4 nogroup
+    srw-rw---- 1 nobody nogroup 0 Aug  8 23:39 /var/run/docker.sock
+
+• Ran python3 -m venv flask/.venv && flask/.venv/bin/python --version && docker info
+  └ Python 3.10.12
+    Client: Docker Engine - Community
+    … +11 lines (ctrl + t to view transcript)
+    Server:
+    permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Docker remains blocked despite the user appearing in the socket’s group, so live services cannot be started here. The Flask virtual environment is created; I’m installing its declared dependencies and will
+  proceed with its tests, then set up FastAPI with uv.
+
+• Ran ./.venv/bin/python -m pip install -r requirements.txt
+  └ WARNING: The directory '/home/soumikd4/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled. Check the permissions and owner of that directory.
+    If executing pip with sudo, you should use sudo's -H flag.
+    … +10 lines (ctrl + t to view transcript)
+    ERROR: Could not find a version that satisfies the requirement Flask<4.0,>=3.0 (from versions: none)
+    ERROR: No matching distribution found for Flask<4.0,>=3.0
+
+✔ You approved codex to run ./.venv/bin/python -m pip install -r requirements.txt this time
+
+• Ran ./.venv/bin/python -m pip install -r requirements.txt
+  └ Collecting Flask<4.0,>=3.0
+      Downloading flask-3.1.3-py3-none-any.whl (103 kB)
+    … +91 lines (ctrl + t to view transcript)
+    prompt-toolkit-3.0.53 psycopg-3.3.4 psycopg-binary-3.3.4 pycparser-3.0 pygments-2.20.0 pymongo-4.17.0 pytest-8.4.2 python-dateutil-2.9.0.post0 redis-6.4.0 six-1.17.0 tomli-2.4.1 typing-extensions-4.16.0
+    tzdata-2026.3 tzlocal-5.4.4 vine-5.1.0 wcwidth-0.8.2 werkzeug-3.1.8
+
+• Ran ./.venv/bin/python -m pytest -q
+  └ ..                                                                       [100%]
+    2 passed in 4.91s
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+• The uv installation is still in progress; once it completes I’ll immediately sync and test FastAPI.
+
+• Ran python3 -m pip install --user uv
+  └ Collecting uv
+      Downloading uv-0.12.3-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (22.3 MB)
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 22.3/22.3 MB 991.3 kB/s eta 0:00:00
+    Installing collected packages: uv
+    Successfully installed uv-0.12.3
+
+• Ran UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv sync
+  └ error: Request failed after 3 retries in 4.5s
+      Caused by: Failed to fetch: `https://pypi.org/simple/pymongo/`
+    … +2 lines (ctrl + t to view transcript)
+      Caused by: dns error
+      Caused by: failed to lookup address information: Temporary failure in name resolution
+
+✔ You approved codex to run UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv sync this time
+
+• Ran UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv run pytest -q
+  └
+    ==================================== ERRORS ====================================
+    … +17 lines (ctrl + t to view transcript)
+    !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+    1 warning, 1 error in 0.92s
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• FastAPI’s environment is now created. Its first test run exposed a project configuration issue—not an API failure: pytest wasn’t adding the project root to Python’s import path. I’ll correct that test
+  configuration and rerun.
+
+
+
+• Ran ./.venv/bin/pytest --version && ./.venv/bin/python -c 'from app.main import app; print(app.title)'
+  └ pytest 8.4.2
+    Contract Processing API
+
+
+
+/ps
+
+Background terminals
+
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• FastAPI’s test collection now succeeds, but its first workflow test stalls during execution. I’m narrowing that down rather than treating the test as passed; the likely path is the test’s synchronous worker
+  call or unavailable Mongo audit connection.
+
+• Ran ps -ef | rg '[p]ytest|[c]elery' || true
+  │ sed -n '1,180p' tests/test_api.py
+  │ sed -n '1,190p' app/main.py
+  │ … +1 lines
+  └ import io
+    import json
+    … +265 lines (ctrl + t to view transcript)
+            refresh_batch_status(session, document.batch)
+            session.commit()
+
+• Edited fastapi/tests/test_api.py (+4 -0)
+    29      monkeypatch.setattr(extract_document, "delay", queued.append)
+    30 +    # Unit tests verify the transactional workflow without waiting for an
+    31 +    # intentionally best-effort external MongoDB audit sink.
+    32 +    monkeypatch.setattr("app.main.record_event", lambda *args, **kwargs: None)
+    7 -  "fastapi>=0.115,<1.0",
+    7 +  "fastapi>=0.115,<0.116",
+    8    "uvicorn[standard]>=0.30,<1.0",
+
+
+
+• Ran UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv sync && ./.venv/bin/python -c 'from fastapi.testclient import TestClient; from app.main import app; print(TestClient(app).get("/
+  │ api/health/").json())'
+  └ error: Request failed after 3 retries in 10.3s
+      Caused by: Failed to fetch: `https://files.pythonhosted.org/packages/53/50/b1222562c6d270fea83e9c9075b8e8600b8479150a18e4516a6138b980d1/fastapi-0.115.14-py3-none-any.whl.metadata`
+    … +2 lines (ctrl + t to view transcript)
+      Caused by: dns error
+      Caused by: failed to lookup address information: Temporary failure in name resolution
+
+✔ You approved codex to run UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv s... this time
+
+• Ran UV_CACHE_DIR=/tmp/contract_processing_uv_cache /home/soumikd4/.local/bin/uv sync && ./.venv/bin/python -c 'from fastapi.testclient import TestClient; from app.main import app; print(TestClient(app).get("/
+  │ api/health/").json())'
+
+
+
+• Ran PYTHONFAULTHANDLER=1 timeout --signal=SIGABRT 15 ./.venv/bin/pytest -s -vv tests/test_api.py::test_upload_process_and_review
+  └ ============================= test session starts ==============================
+    platform linux -- Python 3.10.12, pytest-8.4.2, pluggy-1.6.0 -- /home/soumikd4/Desktop/code/contract-processing/fastapi/.venv/bin/python3
+    … +71 lines (ctrl + t to view transcript)
+    greenlet._greenlet, bson._cbson, pymongo._cmessage, _cffi_backend, yaml._yaml (total: 10)
+    timeout: the monitored command dumped core
+
+• Edited fastapi/app/main.py (+5 -2)
+    66  @app.post("/api/batches/", status_code=status.HTTP_202_ACCEPTED)
+    67 -async def create_batch(
+    67 +def create_batch(
+    68      zip_file: UploadFile = File(...),
+       ⋮
+    84          raise HTTPException(422, "variables must be a non-empty, unique JSON array of strings.")
+    85 -    payload = await zip_file.read()
+    85 +    # The persistence layer is synchronous SQLAlchemy, so keep this endpoint
+    86 +    # synchronous as well. FastAPI runs it in its worker pool, avoiding an
+    87 +    # async event-loop block while ZIP bytes and database rows are handled.
+    88 +    payload = zip_file.file.read()
+    89      try:
+
+
+
+• Edited fastapi/pyproject.toml (+1 -1)
+    13    "PyJWT[crypto]>=2.8,<3.0",
+    14 -  "python-multipart>=0.0.9,<1.0",
+    14 +  "python-multipart>=0.0.9,<0.0.20",
+    15    "pytest>=8.0,<9.0",
+      Caused by: Failed to fetch: `https://files.pythonhosted.org/packages/e1/f4/ddd0fcdc454cf3870153ae16a818256523d31c3c8136e216bc6836ed4cd1/python_multipart-0.0.19-py3-none-any.whl.metadata`
+    … +2 lines (ctrl + t to view transcript)
+    2 passed, 2 warnings in 0.97s
+
+
+╰───────────────────────────────────────────────────────────────────────────────╯
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• FastAPI’s isolated environment and tests now pass (2/2); the failure was resolved by pinning compatible FastAPI and multipart-parser versions. I’ll rerun Django’s suite to complete the non-container validation
+  and then update the checklist status.
+
+• Ran ./.venv/bin/python manage.py test -v 1
+  └ Creating test database for alias 'default'...
+    Found 5 test(s).
+    … +5 lines (ctrl + t to view transcript)
+    OK
+    Destroying test database for alias 'default'...
+
+
+## Continuation status — 2026-08-09
+
+Resumed from the Django test result above. Docker remains unavailable because
+`/var/run/docker.sock` is owned by `nobody:nogroup` and the current user cannot
+access the daemon. The three non-container suites were completed locally.
+
+Completed in this continuation:
+
+- Added `docs/openapi.json` as the checked-in shared OpenAPI 3 contract.
+- Added `contract_tests/suite.py` and framework adapters for Django, FastAPI,
+  and Flask. The suites cover the workflow, malformed ZIPs, Windows-style
+  paths, normalized duplicate variables, exact 15 MiB members, invalid review
+  input, and document/review response shapes.
+- Added FastAPI/Flask Alembic `0001_initial` migrations and a Compose `migrate`
+  service. Fresh SQLite migration checks reach `0001_initial (head)`.
+- Added local/Azure Blob storage adapters, managed-identity configuration,
+  opt-in Sentry/Datadog setup, Celery task time limits, retry attempt/scheduled/
+  exhausted events, and queued-document audit events.
+- Added duplicate-delivery, partial-failure, retry/exhaustion, storage, and
+  PostgreSQL-only concurrent-review tests.
+- Added architecture, assumptions/trade-offs/limitations, framework
+  comparison, incident case-study, and contract-testing documents.
+- Static validation and Compose config validation pass when FastAPI/Flask use
+  `ENV_FILE=.env.example`.
+
+Latest local results:
+
+- FastAPI: 8 passed, 1 PostgreSQL-only test skipped.
+- Flask: 8 passed, 1 PostgreSQL-only test skipped.
+- Django: 8 passed, 1 PostgreSQL-only test skipped.
+
+Still blocked or requiring external authority:
+
+- Run the three live Docker workflow guides with real Keycloak, PostgreSQL,
+  Redis/Celery, MongoDB, and audit-event verification.
+- Run the PostgreSQL concurrent-review tests against Compose.
+- Provision and deploy Azure resources, production Keycloak, Key Vault,
+  managed identities, KEDA, Sentry/Datadog alerts, DNS/TLS, budgets, and
+  rollback/teardown.

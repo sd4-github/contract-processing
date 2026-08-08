@@ -1,0 +1,29 @@
+# Local configuration (keep committed templates)
+.env
+.env.*
+!.env.example
+
+# Python environments, bytecode, test cache, and coverage
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local databases and runtime document storage
+*.db
+*.sqlite3
+media/
+
+# Editor and operating-system artifacts
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~

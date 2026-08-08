@@ -1,0 +1,272 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Contract Processing API",
+    "version": "1.0.0",
+    "description": "Bulk contract upload, asynchronous extraction, batch tracking, and reviewer decisions."
+  },
+  "servers": [
+    { "url": "http://localhost:8000", "description": "Django local API" },
+    { "url": "http://localhost:8002", "description": "FastAPI local API" },
+    { "url": "http://localhost:8003", "description": "Flask local API" }
+  ],
+  "tags": [
+    { "name": "System" },
+    { "name": "Batches" },
+    { "name": "Documents" },
+    { "name": "Findings" }
+  ],
+  "paths": {
+    "/api/health/": {
+      "get": {
+        "tags": ["System"],
+        "operationId": "getHealth",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is ready.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } }
+          }
+        }
+      }
+    },
+    "/api/batches/": {
+      "post": {
+        "tags": ["Batches"],
+        "operationId": "createBatch",
+        "security": [{ "bearerAuth": [] }],
+        "x-required-roles": ["submitter", "administrator"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/BatchUpload" },
+              "encoding": {
+                "variables": { "contentType": "application/json" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Batch accepted and one extraction task queued per document.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Batch" } } }
+          },
+          "400": {
+            "description": "Malformed ZIP, unsafe member, unsupported file, or document limit violation.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": {
+            "description": "Token does not contain a submitter or administrator role.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "422": {
+            "description": "Invalid multipart fields or variables JSON.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/batches/{batch_id}/": {
+      "get": {
+        "tags": ["Batches"],
+        "operationId": "getBatch",
+        "security": [{ "bearerAuth": [] }],
+        "x-required-roles": ["submitter", "reviewer", "administrator"],
+        "parameters": [
+          { "$ref": "#/components/parameters/BatchId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch and its current document/finding state.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Batch" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/documents/{document_id}/": {
+      "get": {
+        "tags": ["Documents"],
+        "operationId": "getDocument",
+        "security": [{ "bearerAuth": [] }],
+        "x-required-roles": ["submitter", "reviewer", "administrator"],
+        "parameters": [
+          { "$ref": "#/components/parameters/DocumentId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document and its extracted findings.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/findings/{finding_id}/review/": {
+      "patch": {
+        "tags": ["Findings"],
+        "operationId": "reviewFinding",
+        "security": [{ "bearerAuth": [] }],
+        "x-required-roles": ["reviewer", "administrator"],
+        "parameters": [
+          { "$ref": "#/components/parameters/FindingId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReviewRequest" },
+              "example": { "decision": "accepted", "reviewer_name": "Asha" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Finding with the persisted reviewer decision.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Finding" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": {
+            "description": "Decision or reviewer name is invalid.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Keycloak OIDC access token."
+      }
+    },
+    "parameters": {
+      "BatchId": {
+        "name": "batch_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "DocumentId": {
+        "name": "document_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "FindingId": {
+        "name": "finding_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Token does not contain the required role.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource was not found.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string", "enum": ["ok"] } }
+      },
+      "BatchUpload": {
+        "type": "object",
+        "required": ["zip_file", "variables"],
+        "properties": {
+          "zip_file": {
+            "type": "string",
+            "format": "binary",
+            "description": "ZIP containing 1–1,000 PDF, DOC, DOCX, or TXT documents; each member is at most 15 MiB."
+          },
+          "variables": {
+            "type": "string",
+            "description": "JSON-encoded non-empty array of unique, non-blank variable names.",
+            "example": "[\"effective_date\", \"monthly_rent\"]"
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "required": ["decision", "reviewer_name"],
+        "additionalProperties": false,
+        "properties": {
+          "decision": { "type": "string", "enum": ["accepted", "rejected"] },
+          "reviewer_name": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      },
+      "Finding": {
+        "type": "object",
+        "required": ["id", "variable_name", "extracted_value", "review_status", "reviewer_name", "reviewer_subject", "reviewed_at", "created_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "variable_name": { "type": "string" },
+          "extracted_value": { "type": "string" },
+          "review_status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+          "reviewer_name": { "type": "string" },
+          "reviewer_subject": { "type": "string" },
+          "reviewed_at": { "type": ["string", "null"], "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "required": ["id", "original_filename", "size_bytes", "status", "error_message", "created_at", "processed_at", "findings"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "original_filename": { "type": "string" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "status": { "type": "string", "enum": ["pending", "processing", "completed", "failed"] },
+          "error_message": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "processed_at": { "type": ["string", "null"], "format": "date-time" },
+          "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } }
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "required": ["id", "variables", "submitted_by_subject", "status", "created_at", "completed_at", "documents"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "variables": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+          "submitted_by_subject": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "processing", "completed", "partial_failed", "failed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "documents": { "type": "array", "items": { "$ref": "#/components/schemas/Document" } }
+        }
+      },
+      "Error": {
+        "description": "Framework-specific validation details. The detail member may be a string, an array, or a field map.",
+        "oneOf": [
+          { "type": "object", "required": ["detail"], "properties": { "detail": { "type": "string" } } },
+          { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+        ]
+      }
+    }
+  }
+}

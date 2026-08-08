@@ -1,0 +1,51 @@
+services:
+  migrate:
+    build: .
+    command: alembic upgrade head
+    env_file: ${ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+  api:
+    build: .
+    env_file: ${ENV_FILE:-.env}
+    ports: ["8003:8000"]
+    volumes: [".:/app"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      keycloak:
+        condition: service_started
+  worker:
+    build: .
+    command: celery -A app.tasks.celery_app worker --loglevel=INFO --concurrency=2
+    env_file: ${ENV_FILE:-.env}
+    volumes: [".:/app"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_DB: contracts, POSTGRES_USER: contracts, POSTGRES_PASSWORD: contracts}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contracts -d contracts"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  redis: {image: redis:7-alpine}
+  mongodb: {image: mongo:7}
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    command: start-dev --import-realm
+    environment: {KC_BOOTSTRAP_ADMIN_USERNAME: admin, KC_BOOTSTRAP_ADMIN_PASSWORD: admin-change-me, KC_HTTP_PORT: 8080, KC_HOSTNAME: http://localhost:8083, KC_HOSTNAME_STRICT: "false"}
+    ports: ["8083:8080"]
+    volumes: ["../django_drf/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"]

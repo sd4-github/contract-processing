@@ -1,0 +1,11 @@
+Django>=4.2,<5.0
+djangorestframework>=3.14,<4.0
+celery[redis]>=5.3,<6.0
+psycopg[binary]>=3.1,<4.0
+pymongo>=4.6,<5.0
+django-storages[azure]>=1.14,<2.0
+sentry-sdk>=2.0,<3.0
+ddtrace>=2.0,<4.0
+gunicorn>=21.2,<24.0
+PyJWT[crypto]>=2.8,<3.0
+drf-spectacular[sidecar]>=0.28,<1.0
