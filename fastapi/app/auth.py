@@ -4,7 +4,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 
 from . import core
-
+jwks_client = jwt.PyJWKClient(core.KEYCLOAK_JWKS_URL)
 
 @dataclass
 class Principal:
@@ -19,7 +19,7 @@ def current_principal(request: Request) -> Principal:
     if len(authorization) != 2 or authorization[0].lower() != "bearer":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Use a Bearer access token.")
     try:
-        key = jwt.PyJWKClient(core.KEYCLOAK_JWKS_URL).get_signing_key_from_jwt(authorization[1]).key
+        key = jwks_client.get_signing_key_from_jwt(authorization[1]).key
         claims = jwt.decode(authorization[1], key, algorithms=["RS256"], audience=core.KEYCLOAK_CLIENT_ID, issuer=core.KEYCLOAK_ISSUER)
     except jwt.PyJWTError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired access token.") from exc
